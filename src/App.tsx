@@ -272,7 +272,11 @@ function App() {
   // Checking if the user is authenticated
   if (!session) {
     // Rendering authentication component
-    return <Auth />;
+    return <Auth onSignIn={(user) => {
+      setSession(user);
+      // Fetch data immediately after sign-in
+      fetchData();
+    }} />;
   }
 
   // Rendering the main app component
@@ -283,7 +287,10 @@ function App() {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold tracking-tight text-gray-900">Events</h1>
             <button 
-              onClick={signOut}
+              onClick={async () => {
+                await signOut();
+                setSession(null);
+              }}
               className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
             >
               Sign Out
@@ -299,48 +306,50 @@ function App() {
           onEventAdded={fetchData}
         />
 
-        {/* View mode buttons */}
-        <div className="mb-8 flex gap-4">
-          <button
-            onClick={() => setViewMode('month')}
-            className={`flex items-center px-4 py-2 rounded ${
-              viewMode === 'month'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white border hover:bg-gray-50'
-            }`}
-          >
-            <Calendar size={20} className="mr-2" />
-            By Month
-          </button>
-          <button
-            onClick={() => setViewMode('country')}
-            className={`flex items-center px-4 py-2 rounded ${
-              viewMode === 'country'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white border hover:bg-gray-50'
-            }`}
-          >
-            <Globe size={20} className="mr-2" />
-            By Country
-          </button>
-          <button
-            onClick={() => setViewMode('event')}
-            className={`flex items-center px-4 py-2 rounded ${
-              viewMode === 'event'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white border hover:bg-gray-50'
-            }`}
-          >
-            <ListChecks size={20} className="mr-2" />
-            By Event
-          </button>
+        {/* View mode buttons - responsive for mobile */}
+        <div className="mb-8 flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-wrap gap-2 sm:gap-4">
+            <button
+              onClick={() => setViewMode('month')}
+              className={`flex items-center px-4 py-2 rounded ${
+                viewMode === 'month'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border hover:bg-gray-50'
+              }`}
+            >
+              <Calendar size={20} className="mr-2" />
+              <span className="whitespace-nowrap">By Month</span>
+            </button>
+            <button
+              onClick={() => setViewMode('country')}
+              className={`flex items-center px-4 py-2 rounded ${
+                viewMode === 'country'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border hover:bg-gray-50'
+              }`}
+            >
+              <Globe size={20} className="mr-2" />
+              <span className="whitespace-nowrap">By Country</span>
+            </button>
+            <button
+              onClick={() => setViewMode('event')}
+              className={`flex items-center px-4 py-2 rounded ${
+                viewMode === 'event'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border hover:bg-gray-50'
+              }`}
+            >
+              <ListChecks size={20} className="mr-2" />
+              <span className="whitespace-nowrap">By Event</span>
+            </button>
+          </div>
 
           {/* Country selector for country view */}
           {viewMode === 'country' && (
             <select
               value={selectedCountry}
               onChange={(e) => setSelectedCountry(e.target.value)}
-              className="flex-1 px-4 py-2 border rounded"
+              className="w-full sm:flex-1 px-4 py-2 border rounded"
             >
               <option value="">Select a country...</option>
               {countries.map(country => (
@@ -356,7 +365,7 @@ function App() {
             <select
               value={selectedEvent}
               onChange={(e) => setSelectedEvent(e.target.value)}
-              className="flex-1 px-4 py-2 border rounded"
+              className="w-full sm:flex-1 px-4 py-2 border rounded"
             >
               <option value="">Select an event...</option>
               {events.map(event => (
