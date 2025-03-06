@@ -27,6 +27,8 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
   const [filteredCountriesByIndex, setFilteredCountriesByIndex] = useState<{[key: number]: string[]}>({});
   const [notification, setNotification] = useState<Notification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [existingEvents, setExistingEvents] = useState<string[]>([]);
+  const [filteredEvents, setFilteredEvents] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchCountries = async () => {
@@ -35,6 +37,23 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
       setAllCountries(data.map((country: any) => country.name.common));
     };
     fetchCountries();
+
+    const fetchExistingEvents = async () => {
+      const { data, error } = await supabase
+        .from('events')
+        .select('name')
+        .order('name');
+      
+      if (error) {
+        console.error('Error fetching existing events:', error);
+        return;
+      }
+      
+      if (data) {
+        setExistingEvents(data.map(event => event.name));
+      }
+    };
+    fetchExistingEvents();
   }, []);
 
   // Clear notification after 5 seconds
@@ -68,19 +87,43 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
     setIsSubmitting(true);
     
     try {
-      // First, insert the event
-      const { data: eventData, error: eventError } = await supabase
+      // Check if event already exists
+      const { data: existingEvent, error: checkError } = await supabase
         .from('events')
-        .insert([{ name: eventName }])
-        .select()
-        .single();
+        .select('id')
+        .eq('name', eventName)
+        .maybeSingle();
 
-      if (eventError) {
-        const errorMessage = getErrorMessage(eventError);
-        setNotification({ type: 'error', message: `Error adding event: ${errorMessage}` });
-        console.error('Error adding event:', eventError);
+      if (checkError) {
+        const errorMessage = getErrorMessage(checkError);
+        setNotification({ type: 'error', message: `Error checking for existing event: ${errorMessage}` });
+        console.error('Error checking for existing event:', checkError);
         setIsSubmitting(false);
         return;
+      }
+
+      let eventId: string;
+      
+      if (existingEvent) {
+        // Event already exists, use its ID
+        eventId = existingEvent.id;
+      } else {
+        // Event doesn't exist, create a new one
+        const { data: newEvent, error: eventError } = await supabase
+          .from('events')
+          .insert([{ name: eventName }])
+          .select()
+          .single();
+
+        if (eventError) {
+          const errorMessage = getErrorMessage(eventError);
+          setNotification({ type: 'error', message: `Error adding event: ${errorMessage}` });
+          console.error('Error adding event:', eventError);
+          setIsSubmitting(false);
+          return;
+        }
+        
+        eventId = newEvent.id;
       }
 
       // Process each country in countryRanges
@@ -121,7 +164,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
 
         // Add event occurrences for this country
         const occurrences = countryRange.ranges.map(range => ({
-          event_id: eventData.id,
+          event_id: eventId,
           country_id: countryId,
           start_month: range.start_month,
           end_month: range.end_month
@@ -141,7 +184,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
       }
 
       // Success! Reset form and show success message
-      setNotification({ type: 'success', message: 'Event added successfully!' });
+      setNotification({ type: 'success', message: existingEvent ? 'Event updated successfully!' : 'Event added successfully!' });
       setEventName('');
       setCountryRanges([]);
       setFilteredCountriesByIndex({});
@@ -163,6 +206,26 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
     } else {
       return 'An unknown error occurred';
     }
+  };
+
+  const handleEventNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEventName(value);
+    
+    // Filter existing events based on input
+    if (value.trim() !== '') {
+      const filtered = existingEvents.filter(event => 
+        event.toLowerCase().includes(value.toLowerCase())
+      );
+      setFilteredEvents(filtered);
+    } else {
+      setFilteredEvents([]);
+    }
+  };
+
+  const selectEvent = (event: string) => {
+    setEventName(event);
+    setFilteredEvents([]);
   };
 
   const handleCountryInputChange = (countryIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,7 +276,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
         className="w-full p-4 flex items-center justify-between text-lg font-semibold"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <span>Add New Event</span>
+        <span>Add/Update Event</span>
         {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
       </button>
       
@@ -224,10 +287,24 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
             <input
               type="text"
               value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
+              onChange={handleEventNameChange}
               className="w-full p-2 border rounded"
+              placeholder="Type event name"
               required
             />
+            {filteredEvents.length > 0 && (
+              <ul className="mt-1 max-h-40 overflow-y-auto border rounded shadow-sm">
+                {filteredEvents.map((event, index) => (
+                  <li 
+                    key={index} 
+                    onClick={() => selectEvent(event)}
+                    className="p-2 hover:bg-gray-100 cursor-pointer"
+                  >
+                    {event}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {countryRanges.map((countryRange, countryIndex) => (

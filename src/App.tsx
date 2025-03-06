@@ -4,6 +4,7 @@ import Auth from "./components/SignIn"; // Importing authentication component
 import { getUser, signOut } from "./lib/auth"; // Importing user management functions
 import { AddEventForm } from './components/AddEventForm'; // Importing form to add new events
 import { EditEventModal } from './components/EditEventModal'; // Importing modal for editing events
+import { PrintFriendlyButton } from './components/PrintFriendlyButton'; // Importing print-friendly button component
 import { Calendar, Globe, ListChecks, Pencil, Trash2 } from 'lucide-react'; // Importing icons for UI
 import type { Country, EventWithOccurrences } from './types'; // Importing types for TypeScript
 
@@ -342,6 +343,9 @@ function App() {
               <ListChecks size={20} className="mr-2" />
               <span className="whitespace-nowrap">By Event</span>
             </button>
+            
+            {/* Print-friendly button */}
+            <PrintFriendlyButton events={events} countries={countries} />
           </div>
 
           {/* Country selector for country view */}
