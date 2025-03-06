@@ -5,6 +5,7 @@ import { getUser, signOut } from "./lib/auth"; // Importing user management func
 import { AddEventForm } from './components/AddEventForm'; // Importing form to add new events
 import { EditEventModal } from './components/EditEventModal'; // Importing modal for editing events
 import { PrintFriendlyButton } from './components/PrintFriendlyButton'; // Importing print-friendly button component
+import { ExportButton } from './components/ExportButton'; // Importing export button component
 import { Calendar, Globe, ListChecks, Pencil, Trash2 } from 'lucide-react'; // Importing icons for UI
 import type { Country, EventWithOccurrences } from './types'; // Importing types for TypeScript
 
@@ -367,6 +368,15 @@ function App() {
             
             {/* Print-friendly button */}
             <PrintFriendlyButton events={events} countries={countries} />
+            
+            {/* Export CSV button */}
+            <ExportButton 
+              viewMode={viewMode}
+              events={events}
+              countries={countries}
+              selectedCountry={selectedCountry}
+              selectedEvent={selectedEvent}
+            />
           </div>
 
           {/* Country selector for country view */}
