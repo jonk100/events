@@ -3,6 +3,8 @@ import { Calendar, Globe, ListChecks, Pencil, Trash2 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { AddEventForm } from './components/AddEventForm';
 import { EditEventModal } from './components/EditEventModal';
+import Auth from "./components/SignIn";
+import { getUser, signOut } from "./lib/auth";
 import type { Country, EventWithOccurrences } from './types';
 
 type ViewMode = 'month' | 'country' | 'event';
@@ -14,6 +16,8 @@ function App() {
   const [selectedCountry, setSelectedCountry] = useState<string>('');
   const [selectedEvent, setSelectedEvent] = useState<string>('');
   const [editingEvent, setEditingEvent] = useState<EventWithOccurrences | null>(null);
+  const [session, setSession] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const monthNames = Array.from({ length: 12 }, (_, i) =>
     new Date(0, i).toLocaleString('default', { month: 'long' })
@@ -46,6 +50,16 @@ function App() {
       console.error('Error fetching data:', error);
     }
   };
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const user = await getUser();
+      setSession(user);
+      setIsLoading(false);
+    };
+
+    fetchUser();
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -189,8 +203,22 @@ function App() {
     });
   };
 
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!session) {
+    return <Auth />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
+      <header className="bg-white shadow">
+        <div className="mx-auto max-w-7xl py-6 px-4 sm:px-6 lg:px-8">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Events</h1>
+          <button onClick={signOut}>Sign Out</button>
+        </div>
+      </header>
       <div className="max-w-7xl mx-auto">
         <AddEventForm
           countries={countries}

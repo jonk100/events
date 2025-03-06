@@ -56,7 +56,12 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
         .select()
         .single();
 
-      if (eventError) throw eventError;
+      if (eventError) {
+        const errorMessage = getErrorMessage(eventError);
+        alert(`Error adding event: ${errorMessage}`);
+        console.error('Error adding event:', eventError);
+        return;
+      }
 
       const occurrences = countryRanges.flatMap(({ country_id, ranges }) =>
         ranges.map(range => ({
@@ -71,7 +76,12 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
         .from('event_occurrences')
         .insert(occurrences);
 
-      if (occurrenceError) throw occurrenceError;
+      if (occurrenceError) {
+        const errorMessage = getErrorMessage(occurrenceError);
+        alert(`Error adding event occurrences: ${errorMessage}`);
+        console.error('Error adding event occurrences:', occurrenceError);
+        return;
+      }
 
       setEventName('');
       setCountryRanges([]);
@@ -79,6 +89,16 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
       onEventAdded();
     } catch (error) {
       console.error('Error adding event:', error);
+    }
+  };
+
+  const getErrorMessage = (error: any) => {
+    if (error.details) {
+      return error.details.map((detail: any) => detail.message).join(', ');
+    } else if (error.message) {
+      return error.message;
+    } else {
+      return 'An unknown error occurred';
     }
   };
 
