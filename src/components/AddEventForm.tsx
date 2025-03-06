@@ -23,8 +23,8 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [eventName, setEventName] = useState('');
   const [countryRanges, setCountryRanges] = useState<CountryEventRange[]>([]);
-  const [countryInput, setCountryInput] = useState('');
-  const [filteredCountries, setFilteredCountries] = useState<string[]>([]);
+  const [allCountries, setAllCountries] = useState<string[]>([]);
+  const [filteredCountriesByIndex, setFilteredCountriesByIndex] = useState<{[key: number]: string[]}>({});
   const [notification, setNotification] = useState<Notification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -32,7 +32,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
     const fetchCountries = async () => {
       const response = await fetch('https://restcountries.com/v3.1/all');
       const data = await response.json();
-      setFilteredCountries(data.map((country: any) => country.name.common));
+      setAllCountries(data.map((country: any) => country.name.common));
     };
     fetchCountries();
   }, []);
@@ -48,7 +48,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
   }, [notification]);
 
   const addCountryRange = () => {
-    setCountryRanges([...countryRanges, { country_id: '', ranges: [{ start_month: 1, end_month: 12 }] }]);
+    setCountryRanges([...countryRanges, { country_id: '', country_name: '', ranges: [{ start_month: 1, end_month: 12 }] }]);
   };
 
   const addMonthRange = (countryIndex: number) => {
@@ -94,7 +94,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
           const { data: existingCountry } = await supabase
             .from('countries')
             .select('id')
-            .eq('name', countryInput)
+            .eq('name', countryRange.country_name)
             .single();
           
           if (existingCountry) {
@@ -103,7 +103,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
             // Insert new country
             const { data: newCountry, error: countryError } = await supabase
               .from('countries')
-              .insert([{ name: countryInput }])
+              .insert([{ name: countryRange.country_name }])
               .select()
               .single();
             
@@ -144,7 +144,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
       setNotification({ type: 'success', message: 'Event added successfully!' });
       setEventName('');
       setCountryRanges([]);
-      setCountryInput('');
+      setFilteredCountriesByIndex({});
       setIsOpen(false);
       onEventAdded(); // Refresh the page data
     } catch (error) {
@@ -165,15 +165,35 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
     }
   };
 
-  const handleCountryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCountryInputChange = (countryIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    setCountryInput(value);
-    setFilteredCountries(filteredCountries.filter(country => country.toLowerCase().includes(value.toLowerCase())));
+    
+    // Update the country name in the countryRanges
+    const newCountryRanges = [...countryRanges];
+    newCountryRanges[countryIndex].country_name = value;
+    setCountryRanges(newCountryRanges);
+    
+    // Filter countries for this specific index
+    const filtered = allCountries.filter(country => 
+      country.toLowerCase().includes(value.toLowerCase())
+    );
+    
+    setFilteredCountriesByIndex({
+      ...filteredCountriesByIndex,
+      [countryIndex]: filtered
+    });
   };
 
-  const selectCountry = (country: string) => {
-    setCountryInput(country);
-    setFilteredCountries([]);
+  const selectCountry = (countryIndex: number, country: string) => {
+    // Update the country name in the countryRanges
+    const newCountryRanges = [...countryRanges];
+    newCountryRanges[countryIndex].country_name = country;
+    setCountryRanges(newCountryRanges);
+    
+    // Clear filtered countries for this index
+    const newFilteredCountries = {...filteredCountriesByIndex};
+    delete newFilteredCountries[countryIndex];
+    setFilteredCountriesByIndex(newFilteredCountries);
   };
 
   return (
@@ -216,18 +236,18 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
                 <label className="block mb-2 font-medium">Country</label>
                 <input
                   type="text"
-                  value={countryInput}
-                  onChange={handleCountryInputChange}
+                  value={countryRange.country_name}
+                  onChange={(e) => handleCountryInputChange(countryIndex, e)}
                   placeholder="Type country name"
                   className="w-full p-2 border rounded"
                   required
                 />
-                {filteredCountries.length > 0 && (
+                {filteredCountriesByIndex[countryIndex]?.length > 0 && (
                   <ul className="mt-1 max-h-40 overflow-y-auto border rounded shadow-sm">
-                    {filteredCountries.map((country, index) => (
+                    {filteredCountriesByIndex[countryIndex].map((country, index) => (
                       <li 
                         key={index} 
-                        onClick={() => selectCountry(country)}
+                        onClick={() => selectCountry(countryIndex, country)}
                         className="p-2 hover:bg-gray-100 cursor-pointer"
                       >
                         {country}
@@ -299,7 +319,7 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
             <button
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center"
-              disabled={isSubmitting || !eventName || countryRanges.length === 0 || !countryInput}
+              disabled={isSubmitting || !eventName || countryRanges.length === 0 || countryRanges.some(range => !range.country_name)}
             >
               {isSubmitting ? (
                 <span className="inline-block animate-spin mr-2">⟳</span>
