@@ -25,6 +25,7 @@ function App() {
   const [events, setEvents] = useState<EventWithOccurrences[]>([]); // State for storing events
   const [countries, setCountries] = useState<Country[]>([]); // State for storing countries
   const [editingEvent, setEditingEvent] = useState<EventWithOccurrences | null>(null); // State for currently editing event
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{id: string, name: string} | null>(null); // State for delete confirmation
   
   // Auth state
   const [session, setSession] = useState(null); // State for user session
@@ -71,22 +72,42 @@ function App() {
   };
 
   /**
-   * Deletes an event from the database
+   * Shows confirmation dialog before deleting an event
    * @param {string} eventId - The ID of the event to delete
+   * @param {string} eventName - The name of the event to delete
    */
-  const handleDeleteEvent = async (eventId: string) => {
+  const confirmDeleteEvent = (eventId: string, eventName: string) => {
+    setDeleteConfirmation({ id: eventId, name: eventName });
+  };
+
+  /**
+   * Cancels the delete confirmation
+   */
+  const cancelDeleteEvent = () => {
+    setDeleteConfirmation(null);
+  };
+
+  /**
+   * Deletes an event from the database
+   */
+  const handleDeleteEvent = async () => {
+    if (!deleteConfirmation) return;
+    
     try {
       // Deleting event by ID
       const { error } = await supabase
         .from('events')
         .delete()
-        .eq('id', eventId);
+        .eq('id', deleteConfirmation.id);
 
       // Handling errors
       if (error) throw error;
       
       // Refreshing data after deletion
       await fetchData();
+      
+      // Close the confirmation dialog
+      setDeleteConfirmation(null);
     } catch (error) {
       // Logging errors
       console.error('Error deleting event:', error);
@@ -146,7 +167,7 @@ function App() {
                     <Pencil size={16} />
                   </button>
                   <button
-                    onClick={() => handleDeleteEvent(event.id)}
+                    onClick={() => confirmDeleteEvent(event.id, event.name)}
                     className="p-1 text-red-600 hover:bg-red-50 rounded"
                   >
                     <Trash2 size={16} />
@@ -396,6 +417,34 @@ function App() {
             onClose={() => setEditingEvent(null)}
             onEventUpdated={fetchData}
           />
+        )}
+        
+        {/* Confirmation dialog for deleting events */}
+        {deleteConfirmation && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+              <h3 className="text-lg font-semibold mb-4">Confirm Deletion</h3>
+              <p className="mb-6">
+                Are you sure you want to delete the event <strong>{deleteConfirmation.name}</strong>? This will remove all occurrences of this event.
+              </p>
+              <div className="flex justify-end gap-4">
+                <button
+                  type="button"
+                  onClick={cancelDeleteEvent}
+                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteEvent}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

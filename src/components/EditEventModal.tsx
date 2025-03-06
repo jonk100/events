@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Check, AlertCircle } from 'lucide-react';
+import { X, Plus, Check, AlertCircle, Trash2 } from 'lucide-react';
 import Select from 'react-select';
 import { supabase } from '../lib/supabase';
 import { Country, EventWithOccurrences, MonthRange, CountryEventRange } from '../types';
@@ -16,6 +16,13 @@ interface Notification {
   message: string;
 }
 
+interface DeleteConfirmation {
+  countryIndex: number;
+  rangeIndex: number;
+  countryName: string;
+  monthRange: string;
+}
+
 /**
  * Modal component for editing an existing event
  * @param {EditEventModalProps} props - The component props
@@ -28,6 +35,7 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
   const [filteredCountriesByIndex, setFilteredCountriesByIndex] = useState<{[key: number]: string[]}>({});
   const [notification, setNotification] = useState<Notification | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
 
   const monthOptions = Array.from({ length: 12 }, (_, i) => ({
     value: i + 1,
@@ -102,11 +110,41 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
   };
 
   /**
+   * Show confirmation dialog before removing a month range
+   * @param {number} countryIndex - The index of the country
+   * @param {number} rangeIndex - The index of the range to remove
+   */
+  const confirmRemoveMonthRange = (countryIndex: number, rangeIndex: number) => {
+    const countryName = countryRanges[countryIndex].country_name;
+    const range = countryRanges[countryIndex].ranges[rangeIndex];
+    const startMonth = monthOptions.find(m => m.value === range.start_month)?.label || range.start_month;
+    const endMonth = monthOptions.find(m => m.value === range.end_month)?.label || range.end_month;
+    const monthRange = startMonth === endMonth ? startMonth : `${startMonth} - ${endMonth}`;
+    
+    setDeleteConfirmation({
+      countryIndex,
+      rangeIndex,
+      countryName,
+      monthRange
+    });
+  };
+
+  /**
+   * Cancel the delete confirmation dialog
+   */
+  const cancelDelete = () => {
+    setDeleteConfirmation(null);
+  };
+
+  /**
    * Remove a month range from a specific country
    * @param {number} countryIndex - The index of the country
    * @param {number} rangeIndex - The index of the range to remove
    */
-  const removeMonthRange = (countryIndex: number, rangeIndex: number) => {
+  const removeMonthRange = () => {
+    if (!deleteConfirmation) return;
+    
+    const { countryIndex, rangeIndex } = deleteConfirmation;
     const newRanges = [...countryRanges];
     newRanges[countryIndex].ranges.splice(rangeIndex, 1);
     
@@ -116,6 +154,7 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
     }
     
     setCountryRanges(newRanges);
+    setDeleteConfirmation(null);
   };
 
   /**
@@ -312,6 +351,33 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
           </div>
         )}
 
+        {deleteConfirmation && (
+          <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+              <h3 className="text-lg font-semibold mb-4">Confirm Deletion</h3>
+              <p className="mb-6">
+                Are you sure you want to delete the event occurrence for <strong>{deleteConfirmation.countryName}</strong> during <strong>{deleteConfirmation.monthRange}</strong>?
+              </p>
+              <div className="flex justify-end gap-4">
+                <button
+                  type="button"
+                  onClick={cancelDelete}
+                  className="px-4 py-2 border rounded hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={removeMonthRange}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block mb-2 font-medium">Event Name</label>
@@ -377,16 +443,14 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
                       className="flex-1"
                       placeholder="End month..."
                     />
-                    {countryRange.ranges.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeMonthRange(countryIndex, rangeIndex)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded"
-                        aria-label="Remove month range"
-                      >
-                        <X size={20} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => confirmRemoveMonthRange(countryIndex, rangeIndex)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded"
+                      aria-label="Delete occurrence"
+                    >
+                      <Trash2 size={20} />
+                    </button>
                   </div>
                 ))}
               </div>
