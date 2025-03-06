@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 import Select from 'react-select';
 import { supabase } from '../lib/supabase';
@@ -9,15 +9,26 @@ interface AddEventFormProps {
   onEventAdded: () => void;
 }
 
+const monthOptions = Array.from({ length: 12 }, (_, i) => ({
+  value: i + 1,
+  label: new Date(0, i).toLocaleString('default', { month: 'long' })
+}));
+
 export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [eventName, setEventName] = useState('');
   const [countryRanges, setCountryRanges] = useState<CountryEventRange[]>([]);
+  const [countryInput, setCountryInput] = useState('');
+  const [filteredCountries, setFilteredCountries] = useState<string[]>([]);
 
-  const monthOptions = Array.from({ length: 12 }, (_, i) => ({
-    value: i + 1,
-    label: new Date(0, i).toLocaleString('default', { month: 'long' })
-  }));
+  useEffect(() => {
+    const fetchCountries = async () => {
+      const response = await fetch('https://restcountries.com/v3.1/all');
+      const data = await response.json();
+      setFilteredCountries(data.map((country: any) => country.name.common));
+    };
+    fetchCountries();
+  }, []);
 
   const addCountryRange = () => {
     setCountryRanges([...countryRanges, { country_id: '', ranges: [{ start_month: 1, end_month: 12 }] }]);
@@ -71,6 +82,17 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
     }
   };
 
+  const handleCountryInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setCountryInput(value);
+    setFilteredCountries(filteredCountries.filter(country => country.toLowerCase().includes(value.toLowerCase())));
+  };
+
+  const selectCountry = (country: string) => {
+    setCountryInput(country);
+    setFilteredCountries([]);
+  };
+
   return (
     <div className="mb-8 border rounded-lg shadow-sm">
       <button
@@ -96,18 +118,19 @@ export function AddEventForm({ countries, onEventAdded }: AddEventFormProps) {
 
           {countryRanges.map((countryRange, countryIndex) => (
             <div key={countryIndex} className="mb-4 p-4 border rounded">
-              <Select
-                options={countries.map(c => ({ value: c.id, label: c.name }))}
-                onChange={(option) => {
-                  const newRanges = [...countryRanges];
-                  newRanges[countryIndex].country_id = option?.value || '';
-                  setCountryRanges(newRanges);
-                }}
-                className="mb-4"
-                placeholder="Select country..."
-                required
+              <input
+                type="text"
+                value={countryInput}
+                onChange={handleCountryInputChange}
+                placeholder="Select country"
               />
-
+              {filteredCountries.length > 0 && (
+                <ul>
+                  {filteredCountries.map((country, index) => (
+                    <li key={index} onClick={() => selectCountry(country)}>{country}</li>
+                  ))}
+                </ul>
+              )}
               {countryRange.ranges.map((range, rangeIndex) => (
                 <div key={rangeIndex} className="flex gap-4 mb-2">
                   <Select
