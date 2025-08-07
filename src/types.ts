@@ -32,3 +32,11 @@ export interface CountryEventRange {
   country_id: string;
   ranges: MonthRange[];
 }
+
+export interface Comment {
+  id: string;
+  event_occurrence_id: string;
+  user_name: string;
+  comment: string;
+  created_at: string;
+}

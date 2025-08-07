@@ -1,6 +1,7 @@
 # Event Calendar App Specification
 
 ## Overview
+
 This app will allow users to manage and view events that occur across various countries. The events are associated with specific months in each country, and users will be able to interact with the calendar in different views and add, edit, or delete events.
 
 ---
@@ -8,6 +9,7 @@ This app will allow users to manage and view events that occur across various co
 ## Key Features
 
 ### 1. **Add Event** (Accordion-style Component)
+
 - At the top of the page, there will be an accordion-style form to add new events.
   - **Fields**:
     - **Event Name**: The name of the event (must be unique).
@@ -30,16 +32,19 @@ This app will allow users to manage and view events that occur across various co
   - The page data will be refreshed to display the newly added event.
 
 ### 2. **Event Views** (Responsive Grid with 3 Views)
+
 - The calendar will display the events in a grid with 3 views.
 
-#### **Default View (Month View)**:
+#### **Default View (Month View)**
+
 - Displays months (e.g., January, February, etc.) as components.
 - For each month, list the events occurring in that month, with each event displaying the countries it occurs in.
   
   **Backend Flow**:
   - Query events from the `events` table and join with `event_occurrences` and `countries` tables.
   - Retrieve events for the selected month:
-    ```
+
+    ```sql
     SELECT e.name AS event_name, c.name AS country_name, eo.start_month, eo.end_month
     FROM events e
     JOIN event_occurrences eo ON e.id = eo.event_id
@@ -47,33 +52,38 @@ This app will allow users to manage and view events that occur across various co
     WHERE eo.start_month <= 'month' AND eo.end_month >= 'month';
     ```
 
-#### **By Country View**:
+#### **By Country View**
+
 - Allows the user to select a country from the database.
 - Displays events for that country, broken down by month.
   
   **Backend Flow**:
   - Query the `event_occurrences` table for the selected country and join with the `events` table:
-    ```
+
+    ```sql
     SELECT e.name AS event_name, eo.start_month, eo.end_month
     FROM event_occurrences eo
     JOIN events e ON eo.event_id = e.id
     WHERE eo.country_id = 'country_id';
     ```
 
-#### **By Event View**:
+#### **By Event View**
+
 - Allows the user to select an event from the database.
 - Displays the countries that host the event, broken down by month.
   
   **Backend Flow**:
   - Query the `event_occurrences` table for the selected event and join with the `countries` table:
-    ```
+
+    ```sql
     SELECT c.name AS country_name, eo.start_month, eo.end_month
     FROM event_occurrences eo
     JOIN countries c ON eo.country_id = c.id
     WHERE eo.event_id = 'event_id';
     ```
 
-### 3. **Event Edit and Delete**:
+### 3. **Event Edit and Delete**
+
 - Each event in the calendar will have **Edit** and **Delete** buttons.
   - **Edit** button opens a modal where the user can:
     - Add or remove countries associated with the event.
@@ -82,25 +92,31 @@ This app will allow users to manage and view events that occur across various co
   **Backend Flow**:
   - **Edit**:
     - Update existing month ranges for a specific country:
-      ```
+
+      ```sql
       UPDATE event_occurrences
       SET start_month = 'new_start_month', end_month = 'new_end_month'
       WHERE event_id = 'event_id' AND country_id = 'country_id';
       ```
+
     - Add a new month range for a specific country:
-      ```
+
+      ```sql
       INSERT INTO event_occurrences (event_id, country_id, start_month, end_month)
       VALUES ('event_id', 'country_id', 'start_month', 'end_month');
       ```
+
     - Delete an existing event occurrence:
-      ```
+
+      ```sql
       DELETE FROM event_occurrences
       WHERE event_id = 'event_id' AND country_id = 'country_id';
       ```
 
   - **Delete**:
     - Delete the event and all associated occurrences:
-      ```
+
+      ```sql
       DELETE FROM events WHERE id = 'event_id';
       ```
 
@@ -108,11 +124,13 @@ This app will allow users to manage and view events that occur across various co
 
 ## Database Schema
 
-### Tables:
+### Tables
 
 #### **1. events**
+
 - Stores event details.
-    ```
+
+    ```sql
     CREATE TABLE IF NOT EXISTS events (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       name text UNIQUE NOT NULL,
@@ -121,8 +139,10 @@ This app will allow users to manage and view events that occur across various co
     ```
 
 #### **2. countries**
+
 - Stores country details.
-    ```
+
+    ```sql
     CREATE TABLE IF NOT EXISTS countries (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       name text UNIQUE NOT NULL,
@@ -131,8 +151,10 @@ This app will allow users to manage and view events that occur across various co
     ```
 
 #### **3. event_occurrences**
+
 - Maps events to countries and defines their month ranges.
-    ```
+
+    ```sql
     CREATE TABLE IF NOT EXISTS event_occurrences (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       event_id uuid REFERENCES events(id) ON DELETE CASCADE,
@@ -144,12 +166,12 @@ This app will allow users to manage and view events that occur across various co
     );
     ```
 
-### Row-Level Security (RLS) Policies:
+### Row-Level Security (RLS) Policies
 
 - Enable **Row-Level Security (RLS)** for the `events`, `countries`, and `event_occurrences` tables.
 - Create policies to ensure authenticated users can **read**, **insert**, **update**, and **delete** records.
 
-    ```
+    ```sql
     -- Enable RLS
     ALTER TABLE events ENABLE ROW LEVEL SECURITY;
     ALTER TABLE countries ENABLE ROW LEVEL SECURITY;
@@ -174,30 +196,90 @@ This app will allow users to manage and view events that occur across various co
   
 ---
 
-## Recap of App Flow and Database Interaction:
+## Recap of App Flow and Database Interaction
 
-### 1. **Add Event**:
+### 1. **Add Event**
+
 - Insert event into the `events` table.
 - Check if the country exists in the `countries` table. If not, insert a new country record.
 - Insert corresponding records into `event_occurrences` for selected countries and month ranges.
 - Show success or error notification to the user.
 - Refresh the page data to display the newly added event.
 
-### 2. **Default View (Month View)**:
+### 2. **Default View (Month View)**
+
 - Query events by month from `event_occurrences`, joining with `events` and `countries`.
 
-### 3. **By Country View**:
+### 3. **By Country View**
+
 - Query events for a selected country from `event_occurrences`, joining with `events`.
 
-### 4. **By Event View**:
+### 4. **By Event View**
+
 - Query countries for a selected event from `event_occurrences`, joining with `countries`.
 
-### 5. **Edit Event**:
+### 5. **Edit Event**
+
 - Update month ranges or countries in `event_occurrences`.
 - Add, remove, or edit records in `event_occurrences`.
 
-### 6. **Delete Event**:
+### 6. **Delete Event**
+
 - Delete event and its related records from `events` and `event_occurrences`.
+
+### 7. **Comments System**
+
+- **Comment Button**: Each event occurrence (event + country combination) displays a green comment button alongside the edit and delete buttons.
+- **Comment Modal**: Clicking the comment button opens a modal that displays existing comments and allows users to add new ones.
+- **Add Comment**: Users can enter their name and comment text, which gets saved to the `comments` table with a reference to the specific `event_occurrence_id`.
+- **View Comments**: All comments for an event occurrence are displayed in chronological order (newest first) with the commenter's name and timestamp.
+
+  **Backend Flow**:
+  - **Fetch Comments**: Query comments for a specific event occurrence:
+
+    ```sql
+    SELECT * FROM comments 
+    WHERE event_occurrence_id = 'occurrence_id' 
+    ORDER BY created_at DESC;
+    ```
+
+  - **Add Comment**: Insert new comment into the `comments` table:
+
+    ```sql
+    INSERT INTO comments (event_occurrence_id, user_name, comment) 
+    VALUES ('occurrence_id', 'user_name', 'comment_text');
+    ```
+
+  **User Experience**:
+  - Comment button is visually distinct (green) and positioned to the left of edit/delete buttons
+  - Modal provides a clean interface for viewing existing comments and adding new ones
+  - Form validation ensures both name and comment fields are filled
+  - Loading states provide feedback during comment submission
+  - Comments display with user name, timestamp, and content in an easy-to-read format
+
+---
+
+## Database Schema Updates
+
+### Comments Table
+
+- Stores user comments for specific event occurrences.
+- Links to `event_occurrences` table via foreign key.
+
+```sql
+CREATE TABLE IF NOT EXISTS comments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_occurrence_id uuid REFERENCES event_occurrences(id) ON DELETE CASCADE,
+  user_name text NOT NULL,
+  comment text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+```
+
+**Security**:
+
+- RLS enabled with policies for authenticated users to perform CRUD operations
+- Comments are automatically deleted when their associated event occurrence is removed (CASCADE)
 
 ---
 

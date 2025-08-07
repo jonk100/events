@@ -4,10 +4,12 @@ import Auth from "./components/SignIn"; // Importing authentication component
 import { getUser, signOut } from "./lib/auth"; // Importing user management functions
 import { AddEventForm } from './components/AddEventForm'; // Importing form to add new events
 import { EditEventModal } from './components/EditEventModal'; // Importing modal for editing events
+import { CommentModal } from './components/CommentModal'; // Importing modal for comments
+import { CommentButton } from './components/CommentButton'; // Importing comment button component
 import { PrintFriendlyButton } from './components/PrintFriendlyButton'; // Importing print-friendly button component
 import { ExportButton } from './components/ExportButton'; // Importing export button component
 import { Calendar, Globe, ListChecks, Pencil, Trash2 } from 'lucide-react'; // Importing icons for UI
-import type { Country, EventWithOccurrences } from './types'; // Importing types for TypeScript
+import type { Country, EventWithOccurrences, EventOccurrence } from './types'; // Importing types for TypeScript
 
 // Defining possible view modes
 type ViewMode = 'month' | 'country' | 'event'; // Enum for view modes
@@ -27,6 +29,12 @@ function App() {
   const [countries, setCountries] = useState<Country[]>([]); // State for storing countries
   const [editingEvent, setEditingEvent] = useState<EventWithOccurrences | null>(null); // State for currently editing event
   const [deleteConfirmation, setDeleteConfirmation] = useState<{id: string, name: string} | null>(null); // State for delete confirmation
+  const [commentModal, setCommentModal] = useState<{
+    isOpen: boolean;
+    eventOccurrence: (EventOccurrence & { country: { name: string } }) | null;
+    eventName: string;
+  }>({ isOpen: false, eventOccurrence: null, eventName: '' }); // State for comment modal
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({}); // State for comment counts by event occurrence ID
   
   // Auth state
   const [session, setSession] = useState(null); // State for user session
@@ -38,11 +46,38 @@ function App() {
   );
 
   /**
+   * Fetches comment counts for all event occurrences
+   */
+  const fetchCommentCounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select('event_occurrence_id')
+        .order('event_occurrence_id');
+
+      if (error) {
+        console.error('Error fetching comment counts:', error);
+        return;
+      }
+
+      // Count comments per event occurrence
+      const counts: Record<string, number> = {};
+      data.forEach(comment => {
+        counts[comment.event_occurrence_id] = (counts[comment.event_occurrence_id] || 0) + 1;
+      });
+
+      setCommentCounts(counts);
+    } catch (error) {
+      console.error('Error fetching comment counts:', error);
+    }
+  };
+
+  /**
    * Fetches events and countries data from the database
    */
   const fetchData = async () => {
     try {
-      // Fetching events and countries data in parallel
+      // Fetching events, countries, and comment counts in parallel
       const [eventsResponse, countriesResponse] = await Promise.all([
         supabase
           .from('events')
@@ -66,6 +101,9 @@ function App() {
       // Setting events and countries state
       setEvents(eventsResponse.data as EventWithOccurrences[]);
       setCountries(countriesResponse.data);
+      
+      // Fetch comment counts after events are loaded
+      await fetchCommentCounts();
     } catch (error) {
       // Logging errors
       console.error('Error fetching data:', error);
@@ -86,6 +124,39 @@ function App() {
    */
   const cancelDeleteEvent = () => {
     setDeleteConfirmation(null);
+  };
+
+  /**
+   * Opens the comment modal for a specific event occurrence
+   * @param {EventOccurrence & { country: { name: string } }} eventOccurrence - The event occurrence to comment on
+   * @param {string} eventName - The name of the event
+   */
+  const openCommentModal = (eventOccurrence: EventOccurrence & { country: { name: string } }, eventName: string) => {
+    setCommentModal({
+      isOpen: true,
+      eventOccurrence,
+      eventName
+    });
+  };
+
+  /**
+   * Closes the comment modal
+   */
+  const closeCommentModal = () => {
+    setCommentModal({
+      isOpen: false,
+      eventOccurrence: null,
+      eventName: ''
+    });
+  };
+
+  /**
+   * Handles when a comment is added (refresh comment counts)
+   */
+  const handleCommentAdded = async () => {
+    // Refresh comment counts when a new comment is added
+    await fetchCommentCounts();
+    console.log('Comment added successfully');
   };
 
   /**
@@ -164,22 +235,32 @@ function App() {
                   <button
                     onClick={() => setEditingEvent(event)}
                     className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                    title="Edit event"
                   >
                     <Pencil size={16} />
                   </button>
                   <button
                     onClick={() => confirmDeleteEvent(event.id, event.name)}
                     className="p-1 text-red-600 hover:bg-red-50 rounded"
+                    title="Delete event"
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
               </div>
-              <div className="text-sm text-gray-600">
+              <div className="space-y-1">
                 {event.occurrences
                   .filter(occ => occ.start_month <= monthIndex && occ.end_month >= monthIndex)
-                  .map(occ => occ.country.name)
-                  .join(', ')}
+                  .map(occ => (
+                    <div key={`${event.id}-${occ.id}`} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">{occ.country.name}</span>
+                      <CommentButton
+                        commentCount={commentCounts[occ.id] || 0}
+                        onClick={() => openCommentModal(occ, event.name)}
+                        size={14}
+                      />
+                    </div>
+                  ))}
               </div>
             </div>
           ))}
@@ -219,30 +300,47 @@ function App() {
       return (
         <div key={month} className="p-4 border rounded-lg">
           <h3 className="text-lg font-semibold mb-3">{month}</h3>
-          {monthEvents.map(event => (
-            <div key={event.id} className="mb-2 flex items-center justify-between">
-              <span>{event.name}</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEditingEvent(event)}
-                  className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                >
-                  <Pencil size={16} />
-                </button>
-                <button
-                  onClick={() => handleDeleteEvent(event.id)}
-                  className="p-1 text-red-600 hover:bg-red-50 rounded"
-                >
-                  <Trash2 size={16} />
-                </button>
+          {monthEvents.map(event => {
+            // Find the specific occurrence for this country and month
+            const occurrence = event.occurrences.find(occ =>
+              occ.country_id === selectedCountry &&
+              occ.start_month <= monthIndex &&
+              occ.end_month >= monthIndex
+            );
+            
+            return (
+              <div key={event.id} className="mb-2 flex items-center justify-between">
+                <span>{event.name}</span>
+                <div className="flex gap-2">
+                  {occurrence && (
+                    <CommentButton
+                      commentCount={commentCounts[occurrence.id] || 0}
+                      onClick={() => openCommentModal(occurrence, event.name)}
+                      size={14}
+                    />
+                  )}
+                  <button
+                    onClick={() => setEditingEvent(event)}
+                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                    title="Edit event"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    onClick={() => confirmDeleteEvent(event.id, event.name)}
+                    className="p-1 text-red-600 hover:bg-red-50 rounded"
+                    title="Delete event"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       );
     });
-  };
-
+};
   /**
    * Renders the event view, displaying occurrences for a selected event
    */
@@ -455,6 +553,17 @@ function App() {
               </div>
             </div>
           </div>
+        )}
+        
+        {/* Comment Modal */}
+        {commentModal.isOpen && commentModal.eventOccurrence && (
+          <CommentModal
+            eventOccurrence={commentModal.eventOccurrence}
+            eventName={commentModal.eventName}
+            isOpen={commentModal.isOpen}
+            onClose={closeCommentModal}
+            onCommentAdded={handleCommentAdded}
+          />
         )}
       </div>
     </div>
