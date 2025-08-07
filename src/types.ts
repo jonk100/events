@@ -36,7 +36,6 @@ export interface CountryEventRange {
 export interface Comment {
   id: string;
   event_occurrence_id: string;
-  user_name: string;
   comment: string;
   created_at: string;
 }

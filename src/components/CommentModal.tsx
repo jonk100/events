@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { X, MessageCircle, Send } from 'lucide-react';
+import { X, MessageCircle, Send, Edit2, Trash2, Check, X as XIcon } from 'lucide-react';
 import type { Comment, EventOccurrence } from '../types';
 
 interface CommentModalProps {
@@ -25,9 +25,11 @@ export const CommentModal: React.FC<CommentModalProps> = ({
 }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
-  const [userName, setUserName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   /**
    * Fetches comments for the current event occurrence
@@ -62,7 +64,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!newComment.trim() || !userName.trim() || !eventOccurrence?.id) {
+    if (!newComment.trim() || !eventOccurrence?.id) {
       return;
     }
 
@@ -72,7 +74,6 @@ export const CommentModal: React.FC<CommentModalProps> = ({
         .from('comments')
         .insert({
           event_occurrence_id: eventOccurrence.id,
-          user_name: userName.trim(),
           comment: newComment.trim()
         });
 
@@ -83,7 +84,6 @@ export const CommentModal: React.FC<CommentModalProps> = ({
 
       // Reset form
       setNewComment('');
-      setUserName('');
       
       // Refresh comments
       await fetchComments();
@@ -95,6 +95,102 @@ export const CommentModal: React.FC<CommentModalProps> = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  /**
+   * Handles starting the edit mode for a comment
+   * @param {Comment} comment - The comment to edit
+   */
+  const handleEditComment = (comment: Comment) => {
+    console.log('Starting edit for comment:', comment.id);
+    setEditingCommentId(comment.id);
+    setEditingText(comment.comment);
+  };
+
+  /**
+   * Handles saving the edited comment
+   * @param {string} commentId - The ID of the comment to update
+   */
+  const handleSaveEdit = async (commentId: string) => {
+    if (!editingText.trim()) {
+      console.log('Edit text is empty, canceling edit');
+      return;
+    }
+
+    console.log('Saving edit for comment:', commentId);
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .update({ comment: editingText.trim() })
+        .eq('id', commentId);
+
+      if (error) {
+        console.error('Error updating comment:', error);
+        return;
+      }
+
+      // Reset editing state
+      setEditingCommentId(null);
+      setEditingText('');
+      
+      // Refresh comments
+      await fetchComments();
+    } catch (error) {
+      console.error('Error updating comment:', error);
+    }
+  };
+
+  /**
+   * Handles canceling the edit mode
+   */
+  const handleCancelEdit = () => {
+    console.log('Canceling edit');
+    setEditingCommentId(null);
+    setEditingText('');
+  };
+
+  /**
+   * Handles showing delete confirmation
+   * @param {string} commentId - The ID of the comment to delete
+   */
+  const handleDeleteComment = (commentId: string) => {
+    console.log('Showing delete confirmation for comment:', commentId);
+    setDeleteConfirmId(commentId);
+  };
+
+  /**
+   * Handles confirming the deletion of a comment
+   * @param {string} commentId - The ID of the comment to delete
+   */
+  const handleConfirmDelete = async (commentId: string) => {
+    console.log('Confirming delete for comment:', commentId);
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .delete()
+        .eq('id', commentId);
+
+      if (error) {
+        console.error('Error deleting comment:', error);
+        return;
+      }
+
+      // Reset delete confirmation state
+      setDeleteConfirmId(null);
+      
+      // Refresh comments
+      await fetchComments();
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+    }
+  };
+
+  /**
+   * Handles canceling the delete confirmation
+   */
+  const handleCancelDelete = () => {
+    console.log('Canceling delete confirmation');
+    setDeleteConfirmId(null);
   };
 
   /**
@@ -159,12 +255,74 @@ export const CommentModal: React.FC<CommentModalProps> = ({
               {comments.map((comment) => (
                 <div key={comment.id} className="bg-gray-50 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-sm">{comment.user_name}</span>
                     <span className="text-xs text-gray-500">
                       {formatDate(comment.created_at)}
                     </span>
+                    <div className="flex items-center gap-2">
+                      {deleteConfirmId === comment.id ? (
+                        <>
+                          <button
+                            onClick={() => handleConfirmDelete(comment.id)}
+                            className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                            title="Confirm delete"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={handleCancelDelete}
+                            className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                            title="Cancel delete"
+                          >
+                            <XIcon size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleEditComment(comment)}
+                            className="p-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                            title="Edit comment"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="p-1 text-red-600 hover:bg-red-100 rounded transition-colors"
+                            title="Delete comment"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-gray-700">{comment.comment}</p>
+                  {editingCommentId === comment.id ? (
+                    <div className="space-y-2">
+                      <textarea
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Edit your comment..."
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-3 py-1 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleSaveEdit(comment.id)}
+                          className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-700">{comment.comment}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -179,22 +337,6 @@ export const CommentModal: React.FC<CommentModalProps> = ({
         <div className="border-t pt-4">
           <h3 className="text-lg font-medium mb-3">Add a Comment</h3>
           <form onSubmit={handleSubmitComment} className="space-y-4">
-            <div>
-              <label htmlFor="userName" className="block text-sm font-medium text-gray-700 mb-1">
-                Your Name
-              </label>
-              <input
-                type="text"
-                id="userName"
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter your name"
-                required
-                disabled={isSubmitting}
-              />
-            </div>
-            
             <div>
               <label htmlFor="comment" className="block text-sm font-medium text-gray-700 mb-1">
                 Comment
@@ -222,7 +364,7 @@ export const CommentModal: React.FC<CommentModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || !newComment.trim() || !userName.trim()}
+                disabled={isSubmitting || !newComment.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 {isSubmitting ? (
