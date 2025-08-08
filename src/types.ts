@@ -38,4 +38,6 @@ export interface Comment {
   event_occurrence_id: string;
   comment: string;
   created_at: string;
+  updated_at: string;
+  archived: boolean;
 }

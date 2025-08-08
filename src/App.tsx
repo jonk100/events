@@ -46,13 +46,14 @@ function App() {
   );
 
   /**
-   * Fetches comment counts for all event occurrences
+   * Fetches unarchived comment counts for all event occurrences
    */
   const fetchCommentCounts = async () => {
     try {
       const { data, error } = await supabase
         .from('comments')
         .select('event_occurrence_id')
+        .eq('archived', false)
         .order('event_occurrence_id');
 
       if (error) {
