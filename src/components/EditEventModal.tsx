@@ -42,7 +42,7 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
     label: new Date(0, i).toLocaleString('default', { month: 'long' })
   }));
 
-  // Initialize country ranges from event data
+  // Initialize country ranges from event data, preserving occurrence IDs for stable updates
   useEffect(() => {
     const countryMap = new Map<string, { country_name: string, ranges: MonthRange[] }>();
     
@@ -59,7 +59,8 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
       
       countryMap.get(countryId)?.ranges.push({
         start_month: occurrence.start_month,
-        end_month: occurrence.end_month
+        end_month: occurrence.end_month,
+        occurrence_id: occurrence.id,
       });
     });
     
@@ -218,7 +219,54 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
   };
 
   /**
-   * Handle form submission to update the event
+   * Merge overlapping or adjacent month ranges. If multiple ranges merge, prefer keeping the first
+   * defined occurrence_id and mark others for reassignment/deletion.
+   * @param {MonthRange[]} ranges - list of ranges for a country
+   * @returns {{ merged: MonthRange[]; mergedFrom: Array<{ kept?: string; removed: string[]; start: number; end: number }>; }}
+   */
+  const mergeRanges = (ranges: MonthRange[]) => {
+    const sorted = [...ranges].sort((a, b) => a.start_month - b.start_month || a.end_month - b.end_month);
+    const merged: MonthRange[] = [];
+    const mergedFrom: Array<{ kept?: string; removed: string[]; start: number; end: number }> = [];
+
+    for (const r of sorted) {
+      const last = merged[merged.length - 1];
+      if (!last) {
+        merged.push({ ...r });
+        mergedFrom.push({ kept: r.occurrence_id, removed: [], start: r.start_month, end: r.end_month });
+        continue;
+      }
+      // Overlap or adjacency (e.g., end 2 and start 3) => merge
+      if (r.start_month <= last.end_month + 1) {
+        const prev = mergedFrom[mergedFrom.length - 1];
+        // Expand bounds
+        last.end_month = Math.max(last.end_month, r.end_month);
+        last.start_month = Math.min(last.start_month, r.start_month);
+        // Keep existing kept id if present, otherwise take this one
+        if (!last.occurrence_id && r.occurrence_id) {
+          last.occurrence_id = r.occurrence_id;
+          prev.kept = r.occurrence_id;
+        }
+        // Track removed occurrence ids
+        if (r.occurrence_id) prev.removed.push(r.occurrence_id);
+        // Update recorded merged span
+        prev.start = Math.min(prev.start, r.start_month);
+        prev.end = Math.max(prev.end, r.end_month);
+      } else {
+        merged.push({ ...r });
+        mergedFrom.push({ kept: r.occurrence_id, removed: [], start: r.start_month, end: r.end_month });
+      }
+    }
+
+    return { merged, mergedFrom };
+  };
+
+  /**
+   * Handle form submission to update the event without deleting all occurrences.
+   * Strategy:
+   * - Update existing occurrences in-place (preserves occurrence IDs and attached comments)
+   * - Insert new occurrences
+   * - Delete only occurrences that were removed by the user
    * @param {React.FormEvent} e - The form submission event
    */
   const handleSubmit = async (e: React.FormEvent) => {
@@ -241,23 +289,23 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
           return;
         }
       }
+      // Normalize/merge overlapping ranges per country to avoid duplicate rows in month view
+      const normalizedCountryRanges: CountryEventRange[] = countryRanges.map((cr) => {
+        const { merged, mergedFrom } = mergeRanges(cr.ranges);
+        console.debug('[EditEventModal] Merged ranges for country', { country_id: cr.country_id, before: cr.ranges, after: merged, mergedFrom });
+        return { ...cr, ranges: merged };
+      });
 
-      // Delete all existing occurrences
-      const { error: deleteError } = await supabase
-        .from('event_occurrences')
-        .delete()
-        .eq('event_id', event.id);
+      // Build lists for updates, inserts, and track kept IDs
+      console.debug('[EditEventModal] Preparing diff for event_occurrences update', { eventId: event.id });
+      const existingOccurrenceIds = new Set(event.occurrences.map(o => o.id));
+      const keptOccurrenceIds = new Set<string>();
 
-      if (deleteError) {
-        const errorMessage = getErrorMessage(deleteError);
-        setNotification({ type: 'error', message: `Error removing existing data: ${errorMessage}` });
-        console.error('Error removing existing data:', deleteError);
-        setIsSubmitting(false);
-        return;
-      }
+      // We will batch inserts for efficiency
+      const inserts: Array<{ event_id: string; country_id: string; start_month: number; end_month: number }> = [];
 
       // Process each country in countryRanges
-      for (const countryRange of countryRanges) {
+      for (const countryRange of normalizedCountryRanges) {
         // Check if country exists in the database
         let countryId = countryRange.country_id;
         
@@ -292,22 +340,123 @@ export function EditEventModal({ event, countries, onClose, onEventUpdated }: Ed
           }
         }
 
-        // Add event occurrences for this country
-        const occurrences = countryRange.ranges.map(range => ({
-          event_id: event.id,
-          country_id: countryId,
-          start_month: range.start_month,
-          end_month: range.end_month
-        }));
+        // For each range decide update vs insert
+        for (const range of countryRange.ranges) {
+          if (range.occurrence_id) {
+            // Update existing occurrence in place, but first check for collision with another existing occurrence
+            const collision = event.occurrences.find(o =>
+              o.id !== range.occurrence_id &&
+              o.country_id === countryId &&
+              o.start_month === range.start_month &&
+              o.end_month === range.end_month
+            );
+            if (collision) {
+              // Move comments to the collision occurrence and delete the current one to avoid duplicates
+              console.debug('[EditEventModal] Resolving occurrence collision by reassigning comments and deleting duplicate', {
+                fromId: range.occurrence_id,
+                toId: collision.id,
+              });
+              const { error: reassignErr } = await supabase
+                .from('comments')
+                .update({ event_occurrence_id: collision.id })
+                .eq('event_occurrence_id', range.occurrence_id);
+              if (reassignErr) {
+                const errorMessage = getErrorMessage(reassignErr);
+                setNotification({ type: 'error', message: `Error reassigning comments: ${errorMessage}` });
+                console.error('Error reassigning comments:', reassignErr);
+                setIsSubmitting(false);
+                return;
+              }
+              const { error: deleteDupErr } = await supabase
+                .from('event_occurrences')
+                .delete()
+                .eq('id', range.occurrence_id);
+              if (deleteDupErr) {
+                const errorMessage = getErrorMessage(deleteDupErr);
+                setNotification({ type: 'error', message: `Error removing duplicate occurrence: ${errorMessage}` });
+                console.error('Error removing duplicate occurrence:', deleteDupErr);
+                setIsSubmitting(false);
+                return;
+              }
+              keptOccurrenceIds.add(collision.id);
+              range.occurrence_id = collision.id;
+            } else {
+              keptOccurrenceIds.add(range.occurrence_id);
+              console.debug('[EditEventModal] Updating occurrence', {
+                id: range.occurrence_id,
+                country_id: countryId,
+                start_month: range.start_month,
+                end_month: range.end_month,
+              });
+              const { error: updateError } = await supabase
+                .from('event_occurrences')
+                .update({
+                  country_id: countryId,
+                  start_month: range.start_month,
+                  end_month: range.end_month,
+                })
+                .eq('id', range.occurrence_id);
+              if (updateError) {
+                const errorMessage = getErrorMessage(updateError);
+                setNotification({ type: 'error', message: `Error updating occurrence: ${errorMessage}` });
+                console.error('Error updating occurrence:', updateError);
+                setIsSubmitting(false);
+                return;
+              }
+            }
+          } else {
+            // If an identical occurrence already exists, reuse it instead of inserting
+            const match = event.occurrences.find(o =>
+              o.event_id === event.id &&
+              o.country_id === countryId &&
+              o.start_month === range.start_month &&
+              o.end_month === range.end_month
+            );
+            if (match) {
+              console.debug('[EditEventModal] Reusing existing matching occurrence instead of insert', { id: match.id });
+              keptOccurrenceIds.add(match.id);
+              // Also set it on the range so future interactions keep linkage
+              range.occurrence_id = match.id;
+            } else {
+              // Queue insert for new occurrence
+              inserts.push({
+                event_id: event.id,
+                country_id: countryId,
+                start_month: range.start_month,
+                end_month: range.end_month,
+              });
+            }
+          }
+        }
+      }
 
-        const { error: occurrenceError } = await supabase
+      // Perform batch inserts if any
+      if (inserts.length > 0) {
+        console.debug('[EditEventModal] Inserting new occurrences', { count: inserts.length });
+        const { error: insertError } = await supabase
           .from('event_occurrences')
-          .insert(occurrences);
-
-        if (occurrenceError) {
-          const errorMessage = getErrorMessage(occurrenceError);
+          .upsert(inserts, { onConflict: 'event_id,country_id,start_month,end_month', ignoreDuplicates: true });
+        if (insertError) {
+          const errorMessage = getErrorMessage(insertError);
           setNotification({ type: 'error', message: `Error adding event occurrences: ${errorMessage}` });
-          console.error('Error adding event occurrences:', occurrenceError);
+          console.error('Error adding event occurrences:', insertError);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // Delete occurrences that were removed by the user
+      const idsToDelete = Array.from(existingOccurrenceIds).filter(id => !keptOccurrenceIds.has(id));
+      if (idsToDelete.length > 0) {
+        console.debug('[EditEventModal] Deleting removed occurrences (will cascade delete their comments)', { idsToDelete });
+        const { error: deleteRemovedError } = await supabase
+          .from('event_occurrences')
+          .delete()
+          .in('id', idsToDelete);
+        if (deleteRemovedError) {
+          const errorMessage = getErrorMessage(deleteRemovedError);
+          setNotification({ type: 'error', message: `Error deleting removed occurrences: ${errorMessage}` });
+          console.error('Error deleting removed occurrences:', deleteRemovedError);
           setIsSubmitting(false);
           return;
         }

@@ -26,10 +26,14 @@ export interface EventWithOccurrences extends Event {
 export interface MonthRange {
   start_month: number;
   end_month: number;
+  /** The existing event_occurrence.id this range corresponds to (if any) */
+  occurrence_id?: string;
 }
 
 export interface CountryEventRange {
   country_id: string;
+  /** Optional human-readable name used in edit forms */
+  country_name?: string;
   ranges: MonthRange[];
 }
 
